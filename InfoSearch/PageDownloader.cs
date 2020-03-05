@@ -17,6 +17,7 @@ namespace InfoSearch
         private const string StartUrl = "https://ru.wikipedia.org/wiki/%D0%A1%D0%BE%D1%84%D0%B8%D1%81%D1%82%D1%8B";
         const string BaseDomain = "https://ru.wikipedia.org";
         const string SavedPagesFilePath = "D:/CrawledPages/SavedPages.txt";
+        const string IndexFilePath = "D:/CrawledPages/Index.txt";
         const string BaseDirectoryPath = "D:/CrawledPages";
         const string PagesDirectoryPath = "D:/CrawledPages/Pages";
         const string LemmatizedPagesDirectoryPath = "D:/CrawledPages/LemmatizedPages";
@@ -24,6 +25,7 @@ namespace InfoSearch
         private static Dictionary<string, int> SavedPages = new Dictionary<string, int>();
         private static int _fileNumber = 1;
         private static LemmatizerPrebuiltFull Lemmatizer;
+        private static Dictionary<string, List<int>> IndexPages = new Dictionary<string, List<int>>();
 
         public async Task Run()
         {
@@ -31,14 +33,28 @@ namespace InfoSearch
 
             var t = new Stopwatch();
             t.Start();
+
             ClearFileAndInitializeQueue();
+
             while (!IsTimeToStop() && LinksQueue.TryDequeue(out var nextUrl))
             {
                 await ReadNewPage(nextUrl);
             }
 
+            WriteIndexToFile();
+
             t.Stop();
             Console.WriteLine($"\n{t.ElapsedMilliseconds}");
+        }
+
+        static void WriteIndexToFile()
+        {
+            using var file = new StreamWriter(IndexFilePath, true);
+            foreach (var (key, value) in IndexPages)
+            {
+                var pages = string.Join(" ", value);
+                file.WriteLine($"{key}:{pages}");
+            }
         }
 
         static void ClearFileAndInitializeQueue()
@@ -65,6 +81,10 @@ namespace InfoSearch
             LinksQueue.Enqueue(StartUrl);
 
             using (File.Create(SavedPagesFilePath))
+            {
+            }
+
+            using (File.Create(IndexFilePath))
             {
             }
         }
@@ -94,9 +114,23 @@ namespace InfoSearch
 
             try
             {
-                var lemmatizedWords = LemmatizeWordsArray(words).ToArray();
+                var lemmatizedWords = LemmatizeWordsArray(words)
+                    .GroupBy(x => x)
+                    .Select(x => x.First())
+                    .ToArray();
 
-                var p = false;
+                foreach (var lemmatizedWord in lemmatizedWords)
+                {
+                    if (IndexPages.TryGetValue(lemmatizedWord, out var pages))
+                    {
+                        pages.Add(_fileNumber);
+                    }
+                    else
+                    {
+                        IndexPages.Add(lemmatizedWord, new List<int>() {_fileNumber});
+                    }
+                }
+
                 await using var sw = File.CreateText($"{LemmatizedPagesDirectoryPath}/{_fileNumber}.txt");
                 sw.WriteLine(string.Join(" ", lemmatizedWords));
             }
