@@ -10,7 +10,7 @@ namespace InfoSearch
             try
             {
                 var pageDownloader = new PageDownloader();
-                await pageDownloader.Run();
+                await pageDownloader.Run(false);
             }
             catch (Exception e)
             {

@@ -25,32 +25,91 @@ namespace InfoSearch
         private static Dictionary<string, int> SavedPages = new Dictionary<string, int>();
         private static int _fileNumber = 1;
         private static LemmatizerPrebuiltFull Lemmatizer;
-        private static Dictionary<string, List<int>> IndexPages = new Dictionary<string, List<int>>();
+        private static Dictionary<string, List<int>> PagesByTerm = new Dictionary<string, List<int>>();
 
-        public async Task Run()
+        public async Task Run(bool isOnlyBooleanSearch)
         {
-            Lemmatizer = new LemmatizerPrebuiltFull(LanguagePrebuilt.Russian);
-
-            var t = new Stopwatch();
-            t.Start();
-
-            ClearFileAndInitializeQueue();
-
-            while (!IsTimeToStop() && LinksQueue.TryDequeue(out var nextUrl))
+            if (!isOnlyBooleanSearch)
             {
-                await ReadNewPage(nextUrl);
+                Lemmatizer = new LemmatizerPrebuiltFull(LanguagePrebuilt.Russian);
+
+                var t = new Stopwatch();
+                t.Start();
+
+                ClearFileAndInitializeQueue();
+
+                while (!IsTimeToStop() && LinksQueue.TryDequeue(out var nextUrl))
+                {
+                    await ReadNewPage(nextUrl);
+                }
+
+                WriteIndexToFile();
+
+                t.Stop();
+                Console.WriteLine($"\n{t.ElapsedMilliseconds}");
             }
 
-            WriteIndexToFile();
+            WaitingForBoolSearch();
+        }
 
-            t.Stop();
-            Console.WriteLine($"\n{t.ElapsedMilliseconds}");
+        static void WaitingForBoolSearch()
+        {
+            Console.WriteLine("Waiting for bool search expressions. Type \"Exit\" to exit.");
+
+            var readLine = string.Empty;
+
+            while (readLine != "Exit")
+            {
+                readLine = (Console.ReadLine() ?? "").Trim();
+
+                var toPerformOr = new Stack<TypeForBooleanSearchOperations>();
+                foreach (var expr in readLine.Split("|"))
+                {
+                    var toPerformAnd = new Stack<TypeForBooleanSearchOperations>();
+                    foreach (var expr2 in expr.Split("&"))
+                    {
+                        var isTrue = expr2[0] != '!';
+                        var term = expr2.Replace("!", "");
+                        PagesByTerm.TryGetValue(term, out var pages);
+                        toPerformAnd.Push(new TypeForBooleanSearchOperations(pages ?? new List<int>(), isTrue));
+                    }
+
+                    var resultToPerformOr = toPerformAnd.Pop();
+
+                    while (toPerformAnd.TryPop(out var anotherOptionToAnd))
+                    {
+                        resultToPerformOr =
+                            TypeForBooleanSearchOperations.BooleamnAmd(resultToPerformOr, anotherOptionToAnd);
+                    }
+                    toPerformOr.Push(resultToPerformOr);
+                }
+
+                var resultPerformed = toPerformOr.Pop();
+
+                while (toPerformOr.TryPop(out var anotherOptionToAnd))
+                {
+                    resultPerformed =
+                        TypeForBooleanSearchOperations.BooleanOr(resultPerformed, anotherOptionToAnd);
+                }
+
+                var result = resultPerformed.Pages;
+
+                if (result == null || result.Count == 0)
+                    result = new List<int>() {0};
+
+                Console.WriteLine("Result: ");
+                foreach (var page in result)
+                {
+                    Console.Write(page + " ");
+                }
+                Console.WriteLine();
+            }
         }
 
         static void WriteIndexToFile()
         {
             using var file = new StreamWriter(IndexFilePath, true);
-            foreach (var (key, value) in IndexPages)
+            foreach (var (key, value) in PagesByTerm)
             {
                 var pages = string.Join(" ", value);
                 file.WriteLine($"{key}:{pages}");
@@ -121,13 +180,13 @@ namespace InfoSearch
 
                 foreach (var lemmatizedWord in lemmatizedWords)
                 {
-                    if (IndexPages.TryGetValue(lemmatizedWord, out var pages))
+                    if (PagesByTerm.TryGetValue(lemmatizedWord, out var pages))
                     {
                         pages.Add(_fileNumber);
                     }
                     else
                     {
-                        IndexPages.Add(lemmatizedWord, new List<int>() {_fileNumber});
+                        PagesByTerm.Add(lemmatizedWord, new List<int>() {_fileNumber});
                     }
                 }
 
