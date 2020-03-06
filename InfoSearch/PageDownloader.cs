@@ -23,6 +23,7 @@ namespace InfoSearch
         const string LemmatizedPagesDirectoryPath = "D:/InfoSearch/LemmatizedPages";
         const string TFAndIDFPath = "D:/InfoSearch/TFAndIDF";
         const string TFPath = "D:/InfoSearch/TFAndIDF/TF";
+        const string TFIDFPath = "D:/InfoSearch/TFAndIDF/TFIDF";
         const string IDFPath = "D:/InfoSearch/TFAndIDF/IDF.txt";
         static Queue<string> LinksQueue = new Queue<string>();
         private static Dictionary<string, int> SavedPages = new Dictionary<string, int>();
@@ -54,11 +55,29 @@ namespace InfoSearch
 
         static void CountIDF()
         {
+            var idfs = new Dictionary<string, double>();
             using var file = new StreamWriter(IDFPath, true);
             foreach (var (key, value) in PagesByTerm)
             {
-                var idf = (double) 100 /value.Count;
+                var idf = (double) 100 / value.Count;
+                idfs.Add(key, idf);
                 file.WriteLine($"{key}\t{idf}");
+            }
+
+            foreach (var i in Enumerable.Range(1, 100))
+            {
+                var tfs = File.ReadAllLines($"{TFPath}/{i}.txt");
+
+                using var sw = File.CreateText($"{TFIDFPath}/{i}.txt");
+
+                foreach (var tf in tfs)
+                {
+                    var splitted = tf.Split("\t");
+                    var word = splitted[0];
+                    var tfValue = Convert.ToDouble(splitted[1]);
+
+                    sw.WriteLine($"{word}\t{idfs[word] * tfValue}");
+                }
             }
         }
 
@@ -149,7 +168,7 @@ namespace InfoSearch
             {
                 var lemmatizedWords = LemmatizeWordsArray(words)
                     .ToArray();
-                
+
                 var frequencyByTerm = new Dictionary<string, int>();
 
                 foreach (var lemmatizedWord in lemmatizedWords)
@@ -162,7 +181,7 @@ namespace InfoSearch
                     {
                         PagesByTerm.Add(lemmatizedWord, new HashSet<int>() {_fileNumber});
                     }
-                    
+
                     if (frequencyByTerm.TryGetValue(lemmatizedWord, out var count))
                     {
                         frequencyByTerm[lemmatizedWord] = ++count;
