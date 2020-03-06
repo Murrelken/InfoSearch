@@ -10,7 +10,10 @@ namespace InfoSearch
             try
             {
                 var pageDownloader = new PageDownloader();
-                await pageDownloader.Run(false);
+                await pageDownloader.Run();
+                
+                var booleanSearcher = new BooleanSearcher();
+                booleanSearcher.Run();
             }
             catch (Exception e)
             {

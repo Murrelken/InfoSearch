@@ -16,93 +16,49 @@ namespace InfoSearch
     {
         private const string StartUrl = "https://ru.wikipedia.org/wiki/%D0%A1%D0%BE%D1%84%D0%B8%D1%81%D1%82%D1%8B";
         const string BaseDomain = "https://ru.wikipedia.org";
-        const string SavedPagesFilePath = "D:/CrawledPages/SavedPages.txt";
-        const string IndexFilePath = "D:/CrawledPages/Index.txt";
-        const string BaseDirectoryPath = "D:/CrawledPages";
-        const string PagesDirectoryPath = "D:/CrawledPages/Pages";
-        const string LemmatizedPagesDirectoryPath = "D:/CrawledPages/LemmatizedPages";
+        const string SavedPagesFilePath = "D:/InfoSearch/SavedPages.txt";
+        const string IndexFilePath = "D:/InfoSearch/Index.txt";
+        const string BaseDirectoryPath = "D:/InfoSearch";
+        const string PagesDirectoryPath = "D:/InfoSearch/Pages";
+        const string LemmatizedPagesDirectoryPath = "D:/InfoSearch/LemmatizedPages";
+        const string TFAndIDFPath = "D:/InfoSearch/TFAndIDF";
+        const string TFPath = "D:/InfoSearch/TFAndIDF/TF";
+        const string IDFPath = "D:/InfoSearch/TFAndIDF/IDF.txt";
         static Queue<string> LinksQueue = new Queue<string>();
         private static Dictionary<string, int> SavedPages = new Dictionary<string, int>();
         private static int _fileNumber = 1;
         private static LemmatizerPrebuiltFull Lemmatizer;
-        private static Dictionary<string, List<int>> PagesByTerm = new Dictionary<string, List<int>>();
+        private static Dictionary<string, HashSet<int>> PagesByTerm = new Dictionary<string, HashSet<int>>();
 
-        public async Task Run(bool isOnlyBooleanSearch)
+        public async Task Run()
         {
-            if (!isOnlyBooleanSearch)
+            Lemmatizer = new LemmatizerPrebuiltFull(LanguagePrebuilt.Russian);
+
+            var t = new Stopwatch();
+            t.Start();
+
+            ClearFileAndInitializeQueue();
+
+            while (!IsTimeToStop() && LinksQueue.TryDequeue(out var nextUrl))
             {
-                Lemmatizer = new LemmatizerPrebuiltFull(LanguagePrebuilt.Russian);
-
-                var t = new Stopwatch();
-                t.Start();
-
-                ClearFileAndInitializeQueue();
-
-                while (!IsTimeToStop() && LinksQueue.TryDequeue(out var nextUrl))
-                {
-                    await ReadNewPage(nextUrl);
-                }
-
-                WriteIndexToFile();
-
-                t.Stop();
-                Console.WriteLine($"\n{t.ElapsedMilliseconds}");
+                await ReadNewPage(nextUrl);
             }
 
-            WaitingForBoolSearch();
+            WriteIndexToFile();
+
+            CountIDF();
+
+            t.Stop();
+            Console.WriteLine($"\n{t.ElapsedMilliseconds}");
         }
 
-        static void WaitingForBoolSearch()
+        static void CountIDF()
         {
-            Console.WriteLine("Waiting for bool search expressions. Type \"Exit\" to exit.");
-
-            var readLine = string.Empty;
-
-            while (readLine != "Exit")
+            using var file = new StreamWriter(IDFPath, true);
+            foreach (var (key, value) in PagesByTerm)
             {
-                readLine = (Console.ReadLine() ?? "").Trim();
-
-                var toPerformOr = new Stack<TypeForBooleanSearchOperations>();
-                foreach (var expr in readLine.Split("|"))
-                {
-                    var toPerformAnd = new Stack<TypeForBooleanSearchOperations>();
-                    foreach (var expr2 in expr.Split("&"))
-                    {
-                        var isTrue = expr2[0] != '!';
-                        var term = expr2.Replace("!", "");
-                        PagesByTerm.TryGetValue(term, out var pages);
-                        toPerformAnd.Push(new TypeForBooleanSearchOperations(pages ?? new List<int>(), isTrue));
-                    }
-
-                    var resultToPerformOr = toPerformAnd.Pop();
-
-                    while (toPerformAnd.TryPop(out var anotherOptionToAnd))
-                    {
-                        resultToPerformOr =
-                            TypeForBooleanSearchOperations.BooleamnAmd(resultToPerformOr, anotherOptionToAnd);
-                    }
-                    toPerformOr.Push(resultToPerformOr);
-                }
-
-                var resultPerformed = toPerformOr.Pop();
-
-                while (toPerformOr.TryPop(out var anotherOptionToAnd))
-                {
-                    resultPerformed =
-                        TypeForBooleanSearchOperations.BooleanOr(resultPerformed, anotherOptionToAnd);
-                }
-
-                var result = resultPerformed.Pages;
-
-                if (result == null || result.Count == 0)
-                    result = new List<int>() {0};
-
-                Console.WriteLine("Result: ");
-                foreach (var page in result)
-                {
-                    Console.Write(page + " ");
-                }
-                Console.WriteLine();
+                var idf = (double) 100 /value.Count;
+                file.WriteLine($"{key}\t{idf}");
             }
         }
 
@@ -112,7 +68,7 @@ namespace InfoSearch
             foreach (var (key, value) in PagesByTerm)
             {
                 var pages = string.Join(" ", value);
-                file.WriteLine($"{key}:{pages}");
+                file.WriteLine($"{key}\t{pages}");
             }
         }
 
@@ -121,6 +77,8 @@ namespace InfoSearch
             var baseDirectoryPath = new DirectoryInfo(BaseDirectoryPath);
             var pagesDirectoryPath = new DirectoryInfo(PagesDirectoryPath);
             var lemmatizedPagesDirectoryPath = new DirectoryInfo(LemmatizedPagesDirectoryPath);
+            var TFAndIDFDirectoryPath = new DirectoryInfo(TFAndIDFPath);
+            var TFDirectoryPath = new DirectoryInfo(TFPath);
 
             foreach (var file in baseDirectoryPath.GetFiles())
             {
@@ -137,6 +95,16 @@ namespace InfoSearch
                 file.Delete();
             }
 
+            foreach (var file in TFAndIDFDirectoryPath.GetFiles())
+            {
+                file.Delete();
+            }
+
+            foreach (var file in TFDirectoryPath.GetFiles())
+            {
+                file.Delete();
+            }
+
             LinksQueue.Enqueue(StartUrl);
 
             using (File.Create(SavedPagesFilePath))
@@ -144,6 +112,10 @@ namespace InfoSearch
             }
 
             using (File.Create(IndexFilePath))
+            {
+            }
+
+            using (File.Create(IDFPath))
             {
             }
         }
@@ -168,15 +140,17 @@ namespace InfoSearch
                 .Where(x => x != "—")
                 .ToArray();
 
-            if (words.Length < 1000)
+            var wordsCount = words.Length;
+
+            if (wordsCount < 1000)
                 return;
 
             try
             {
                 var lemmatizedWords = LemmatizeWordsArray(words)
-                    .GroupBy(x => x)
-                    .Select(x => x.First())
                     .ToArray();
+                
+                var frequencyByTerm = new Dictionary<string, int>();
 
                 foreach (var lemmatizedWord in lemmatizedWords)
                 {
@@ -186,8 +160,23 @@ namespace InfoSearch
                     }
                     else
                     {
-                        PagesByTerm.Add(lemmatizedWord, new List<int>() {_fileNumber});
+                        PagesByTerm.Add(lemmatizedWord, new HashSet<int>() {_fileNumber});
                     }
+                    
+                    if (frequencyByTerm.TryGetValue(lemmatizedWord, out var count))
+                    {
+                        frequencyByTerm[lemmatizedWord] = ++count;
+                    }
+                    else
+                    {
+                        frequencyByTerm.Add(lemmatizedWord, 1);
+                    }
+                }
+
+                await using var swTF = File.CreateText($"{TFPath}/{_fileNumber}.txt");
+                foreach (var (key, count) in frequencyByTerm)
+                {
+                    swTF.WriteLine($"{key}\t{(double) count / wordsCount}");
                 }
 
                 await using var sw = File.CreateText($"{LemmatizedPagesDirectoryPath}/{_fileNumber}.txt");
