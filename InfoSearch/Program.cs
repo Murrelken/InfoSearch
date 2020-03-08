@@ -15,8 +15,11 @@ namespace InfoSearch
                 // var booleanSearcher = new BooleanSearcher();
                 // booleanSearcher.Run();
 
-                var TFIDFCalculator = new TFIDFCalculator();
-                TFIDFCalculator.Run();
+                // var TFIDFCalculator = new TFIDFCalculator();
+                // TFIDFCalculator.Run();
+                
+                var vectorSearch = new VectorSearch();
+                vectorSearch.Run();
             }
             catch (Exception e)
             {
