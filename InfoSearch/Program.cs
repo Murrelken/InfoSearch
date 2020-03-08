@@ -9,11 +9,14 @@ namespace InfoSearch
         {
             try
             {
-                var pageDownloader = new PageDownloader();
-                await pageDownloader.Run();
-                
-                var booleanSearcher = new BooleanSearcher();
-                booleanSearcher.Run();
+                // var pageDownloader = new PageDownloader();
+                // await pageDownloader.Run();
+                //
+                // var booleanSearcher = new BooleanSearcher();
+                // booleanSearcher.Run();
+
+                var TFIDFCalculator = new TFIDFCalculator();
+                TFIDFCalculator.Run();
             }
             catch (Exception e)
             {

@@ -59,7 +59,7 @@ namespace InfoSearch
             using var file = new StreamWriter(IDFPath, true);
             foreach (var (key, value) in PagesByTerm)
             {
-                var idf = (double) 100 / value.Count;
+                var idf = Math.Round((double) 100 / value.Count, 5);
                 idfs.Add(key, idf);
                 file.WriteLine($"{key}\t{idf}");
             }
@@ -76,7 +76,9 @@ namespace InfoSearch
                     var word = splitted[0];
                     var tfValue = Convert.ToDouble(splitted[1]);
 
-                    sw.WriteLine($"{word}\t{idfs[word] * tfValue}");
+                    var tfIdf = Math.Round(idfs[word] * tfValue, 5);
+
+                    sw.WriteLine($"{word}\t{tfIdf}");
                 }
             }
         }
@@ -195,7 +197,8 @@ namespace InfoSearch
                 await using var swTF = File.CreateText($"{TFPath}/{_fileNumber}.txt");
                 foreach (var (key, count) in frequencyByTerm)
                 {
-                    swTF.WriteLine($"{key}\t{(double) count / wordsCount}");
+                    var tf = Math.Round((double) count / wordsCount, 5);
+                    swTF.WriteLine($"{key}\t{tf}");
                 }
 
                 await using var sw = File.CreateText($"{LemmatizedPagesDirectoryPath}/{_fileNumber}.txt");
